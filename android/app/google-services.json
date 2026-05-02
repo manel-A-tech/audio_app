@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "237675993565",
+    "project_id": "audio-app-project-cc828",
+    "storage_bucket": "audio-app-project-cc828.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:237675993565:android:338b82a20febe031b27e34",
+        "android_client_info": {
+          "package_name": "com.example.audio_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQE2zandQiOcJD2bYaBW0XdfNCKGfOddw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

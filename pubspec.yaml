@@ -1,0 +1,45 @@
+name: audio_app
+description: A mobile audio application with biometric authentication
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.4.4
+
+  # Biometric authentication
+  local_auth: ^2.3.0
+
+  # Audio
+  just_audio: ^0.9.36
+
+  # HTTP requests for API
+  http: ^1.1.0
+
+  # Charts
+  fl_chart: ^0.66.0
+
+  # Local storage
+  shared_preferences: ^2.2.2
+
+  # Date formatting
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/sounds/
