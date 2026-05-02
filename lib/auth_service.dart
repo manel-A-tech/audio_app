@@ -47,8 +47,13 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> getProfile(String uid) async {
-    final doc = await _db.collection("users").doc(uid).get();
-    return doc.data() as Map<String, dynamic>;
+    try {
+      final doc = await _db.collection("users").doc(uid).get();
+      if (!doc.exists || doc.data() == null) return {};
+      return doc.data() as Map<String, dynamic>;
+    } catch (e) {
+      return {};
+    }
   }
 
   Future<void> logout() async {
@@ -56,8 +61,13 @@ class AuthService {
   }
 
   Future<String> getFullName(String uid) async {
-    final doc = await _db.collection("users").doc(uid).get();
-    final data = doc.data() as Map<String, dynamic>;
-    return "${data['firstName']} ${data['lastName']}";
+    try {
+      final doc = await _db.collection("users").doc(uid).get();
+      if (!doc.exists || doc.data() == null) return '';
+      final data = doc.data() as Map<String, dynamic>;
+      return "${data['firstName'] ?? ''} ${data['lastName'] ?? ''}".trim();
+    } catch (e) {
+      return '';
+    }
   }
 }
