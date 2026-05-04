@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'biometric_service.dart';
 import 'package:audio_app/ models/track.dart';
 import 'services/api_service.dart';
+import 'app_localizations.dart';
+import 'surah_translations.dart';
 
 const _accent     = Color(0xFF7C6FA0);
 const _accentMild = Color(0xFFEDE9F5);
@@ -31,6 +32,7 @@ class _PlayerPageState extends State<PlayerPage> {
   final ApiService _apiService = ApiService();
 
   List<Track> _tracks = [];
+  List<Track> _filteredTracks = [];
   Track? _currentTrack;
   bool _isPlaying = false;
   bool _isRepeat = false;
@@ -41,10 +43,54 @@ class _PlayerPageState extends State<PlayerPage> {
   List<Map<String, dynamic>> _reciters = [];
   DateTime? _playStartTime;
 
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    AppLocalizations.of(context);
+  }
+
   @override
   void initState() {
     super.initState();
     _initializePlayer();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+      _filterTracks();
+    });
+  }
+
+  void _filterTracks() {
+    final locale = Localizations.localeOf(context).languageCode;
+    if (_searchQuery.isEmpty) {
+      _filteredTracks = List.from(_tracks);
+    } else {
+      _filteredTracks = _tracks.where((track) {
+        final localizedName = getSurahName(track.number, locale).toLowerCase();
+        final localizedTranslation = getSurahTranslation(track.number, locale).toLowerCase();
+        return localizedName.contains(_searchQuery) ||
+            localizedTranslation.contains(_searchQuery) ||
+            track.number.toString().contains(_searchQuery);
+      }).toList();
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    if (_playStartTime != null) {
+      _saveListeningTime();
+      _playStartTime = null;
+    }
+    _player.dispose();
+    super.dispose();
   }
 
   Future<void> _initializePlayer() async {
@@ -57,6 +103,7 @@ class _PlayerPageState extends State<PlayerPage> {
       setState(() {
         _reciters = reciters;
         _tracks = tracks;
+        _filteredTracks = List.from(tracks);
         _isLoading = false;
       });
     }
@@ -71,30 +118,48 @@ class _PlayerPageState extends State<PlayerPage> {
     if (mounted) {
       setState(() {
         _tracks = tracks;
+        _filteredTracks = List.from(tracks);
+        _searchQuery = '';
+        _searchController.clear();
         _currentTrack = null;
+        _isPlaying = false;  // ← Reset playing state
         _isLoading = false;
       });
     }
   }
 
   void _setupPlayerListeners() {
-    _player.playerStateStream.listen((state) async {
-      if (mounted) setState(() => _isPlaying = state.playing);
-
-      // FIX: Save when playback completes naturally - DON'T clear _playStartTime yet
-      if (state.processingState == ProcessingState.completed) {
-        print('Track completed naturally');
-        // Save listening time BEFORE clearing _playStartTime
-        await _saveListeningTime();
-        // Clear after saving
-        _playStartTime = null;
+    // Listen for player state changes
+    _player.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing;
+        });
       }
+    });
 
-      // Save when playback stops/pauses
-      if (!state.playing && _playStartTime != null) {
-        print('Track paused/stopped');
+    // Listen for when a track completes
+    _player.processingStateStream.listen((state) async {
+      if (state == ProcessingState.completed) {
+        // Track finished playing
+        if (mounted) {
+          setState(() {
+            _isPlaying = false;
+          });
+        }
+
+        // Save listening time
         await _saveListeningTime();
         _playStartTime = null;
+
+        // If not on repeat, stop showing as playing
+        if (!_isRepeat) {
+          if (mounted) {
+            setState(() {
+              _currentTrack = null;
+            });
+          }
+        }
       }
     });
   }
@@ -111,40 +176,18 @@ class _PlayerPageState extends State<PlayerPage> {
     }
   }
 
-  // FIX: Don't clear _playStartTime until AFTER saving
   Future<void> _saveListeningTime() async {
-    print('=== SAVE LISTENING TIME CALLED ===');
-    print('Play start time: $_playStartTime');
-    print('Current track: ${_currentTrack?.name}');
-
-    if (_playStartTime == null || _currentTrack == null) {
-      print('ERROR: playStartTime or currentTrack is null');
-      return;
-    }
+    if (_playStartTime == null || _currentTrack == null) return;
 
     final userId = _auth.currentUser?.uid;
-    if (userId == null) {
-      print('ERROR: No user logged in');
-      return;
-    }
+    if (userId == null) return;
 
     final elapsed = DateTime.now().difference(_playStartTime!);
     final minutes = elapsed.inSeconds / 60.0;
-    print('Elapsed seconds: ${elapsed.inSeconds}');
-    print('Minutes to save: $minutes');
 
-    // IMPORTANT: Don't clear _playStartTime here - let the caller clear it
-    // _playStartTime = null; // REMOVED - caller will clear it
-
-    // Lower threshold to 0.01 minutes (0.6 seconds) for testing
-    if (minutes < 0.01) {
-      print('Minutes too small (<0.01), not saving');
-      return;
-    }
+    if (minutes < 0.01) return;
 
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    print('Saving for date: $today');
-
     final trackName = _currentTrack!.name;
     final userDoc = _firestore.collection('users').doc(userId);
     final statsRef = userDoc.collection('stats').doc(today);
@@ -154,43 +197,37 @@ class _PlayerPageState extends State<PlayerPage> {
         final snap = await tx.get(statsRef);
         if (snap.exists) {
           final currentMinutes = (snap.data()!['minutes'] as num).toDouble();
-          final newMinutes = currentMinutes + minutes;
-          print('Updating existing doc: $currentMinutes + $minutes = $newMinutes');
-          tx.update(statsRef, {'minutes': newMinutes, 'date': today});
+          tx.update(statsRef, {'minutes': currentMinutes + minutes, 'date': today});
         } else {
-          print('Creating new doc with $minutes minutes');
           tx.set(statsRef, {'minutes': minutes, 'date': today});
         }
       });
-      print('Successfully saved to Firestore!');
 
-      // Update topTracks
       final trackRef = userDoc.collection('topTracks').doc(trackName);
       await _firestore.runTransaction((tx) async {
         final snap = await tx.get(trackRef);
         if (snap.exists) {
           final currentCount = (snap.data()!['count'] as num).toInt();
           tx.update(trackRef, {'count': currentCount + 1, 'name': trackName});
-          print('Updated topTracks: $trackName count = ${currentCount + 1}');
         } else {
           tx.set(trackRef, {'name': trackName, 'count': 1});
-          print('Created topTracks: $trackName with count 1');
         }
       });
     } catch (e) {
-      print('ERROR saving to Firestore: $e');
+      // Silently fail
     }
   }
 
   Future<void> _toggleFavorite(Track track) async {
+    final l = AppLocalizations.of(context);
     final userId = _auth.currentUser?.uid;
     if (userId == null) return;
     final key = '${track.id}_$_selectedReciterId';
     if (_favorites.contains(key)) {
       final ok = await _biometricService.authenticateWithFingerprint(context);
       if (!ok) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Fingerprint required to remove favourites')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l.fingerprintRequired)));
         return;
       }
       await _firestore
@@ -198,7 +235,7 @@ class _PlayerPageState extends State<PlayerPage> {
       if (mounted) {
         setState(() => _favorites.remove(key));
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Removed from favourites')));
+            SnackBar(content: Text(l.removedFromFavourites)));
       }
     } else {
       await _firestore
@@ -213,38 +250,56 @@ class _PlayerPageState extends State<PlayerPage> {
       if (mounted) {
         setState(() => _favorites.add(key));
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Added to favourites')));
+            SnackBar(content: Text(l.addedToFavourites)));
       }
     }
   }
 
   void _playTrack(Track track) async {
-    // Save any currently playing track before switching
+    final l = AppLocalizations.of(context);
     if (_playStartTime != null) {
       await _saveListeningTime();
       _playStartTime = null;
     }
 
-    setState(() => _currentTrack = track);
+    setState(() {
+      _currentTrack = track;
+      _isPlaying = false;  // Reset before playing
+    });
+
     try {
       await _player.stop();
       await _player.setUrl(track.audioUrl);
       await _player.play();
       _playStartTime = DateTime.now();
-      print('Started playing: ${track.name} at $_playStartTime');
+      setState(() {
+        _isPlaying = true;
+      });
     } catch (e) {
-      debugPrint('Error playing: $e');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error playing ${track.name}')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${l.errorPlaying} ${track.name}')));
+        setState(() {
+          _isPlaying = false;
+        });
+      }
     }
   }
 
   void _playPause() async {
     if (_isPlaying) {
       await _player.pause();
+      setState(() {
+        _isPlaying = false;
+      });
     } else {
-      _playStartTime = DateTime.now();
-      await _player.play();
+      if (_currentTrack != null) {
+        _playStartTime = DateTime.now();
+        await _player.play();
+        setState(() {
+          _isPlaying = true;
+        });
+      }
     }
   }
 
@@ -256,14 +311,15 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   void _changeReciter() {
+    final l = AppLocalizations.of(context);
     if (_reciters.isEmpty) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(kRadius)),
-        title: const Text('Select Reciter',
-            style: TextStyle(fontWeight: FontWeight.w800, color: _textMain)),
+        title: Text(l.selectReciter,
+            style: const TextStyle(fontWeight: FontWeight.w800, color: _textMain)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: _reciters.map((reciter) {
@@ -305,25 +361,16 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   @override
-  void dispose() {
-    if (_playStartTime != null) {
-      _saveListeningTime();
-      _playStartTime = null;
-    }
-    _player.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).languageCode;
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: _accent));
     }
 
-    // PlayerPage is embedded in HomePage's tab — NO Scaffold, NO bottom nav
     return Column(
       children: [
-        // ── Reciter selector ──────────────────────────────────────────────────
         Container(
           color: _bg,
           padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
@@ -355,12 +402,12 @@ class _PlayerPageState extends State<PlayerPage> {
                       borderRadius: BorderRadius.circular(20)),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.swap_horiz_rounded,
+                    children: [
+                      const Icon(Icons.swap_horiz_rounded,
                           size: 14, color: _accent),
-                      SizedBox(width: 4),
-                      Text('Change',
-                          style: TextStyle(
+                      const SizedBox(width: 4),
+                      Text(l.change,
+                          style: const TextStyle(
                               fontSize: 12,
                               color: _accent,
                               fontWeight: FontWeight.w600)),
@@ -372,7 +419,54 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
 
-        // ── Now playing card ──────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Container(
+            decoration: BoxDecoration(
+              color: _cardBg,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: l.searchSurahs,
+                hintStyle: const TextStyle(fontSize: 13, color: _textSub),
+                prefixIcon: const Icon(Icons.search_rounded, color: _textSub, size: 20),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, color: _textSub, size: 20),
+                  onPressed: () {
+                    _searchController.clear();
+                  },
+                )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ),
+
+        if (_searchQuery.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                Text(
+                  '${_filteredTracks.length} ${l.resultsFound}',
+                  style: const TextStyle(fontSize: 11, color: _textSub),
+                ),
+              ],
+            ),
+          ),
+
         if (_currentTrack != null)
           Container(
             margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
@@ -390,7 +484,7 @@ class _PlayerPageState extends State<PlayerPage> {
             child: Column(
               children: [
                 Text(
-                  '${_currentTrack!.number}. ${_currentTrack!.name}',
+                  '${_currentTrack!.number}. ${getSurahName(_currentTrack!.number, locale)}',
                   style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
@@ -398,9 +492,9 @@ class _PlayerPageState extends State<PlayerPage> {
                       letterSpacing: -0.3),
                   textAlign: TextAlign.center,
                 ),
-                if (_currentTrack!.translation.isNotEmpty) ...[
+                if (getSurahTranslation(_currentTrack!.number, locale).isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(_currentTrack!.translation,
+                  Text(getSurahTranslation(_currentTrack!.number, locale),
                       style: const TextStyle(
                           fontSize: 11, color: Colors.white60)),
                 ],
@@ -455,15 +549,26 @@ class _PlayerPageState extends State<PlayerPage> {
 
         const SizedBox(height: 8),
 
-        // ── Surah list ────────────────────────────────────────────────────────
         Expanded(
-          child: _tracks.isEmpty
-              ? const Center(child: Text('No tracks available'))
+          child: _filteredTracks.isEmpty
+              ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off_rounded, size: 48, color: _textSub),
+                const SizedBox(height: 12),
+                Text(
+                  '${l.noResultsFound} "$_searchQuery"',
+                  style: const TextStyle(fontSize: 14, color: _textSub),
+                ),
+              ],
+            ),
+          )
               : ListView.builder(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            itemCount: _tracks.length,
+            itemCount: _filteredTracks.length,
             itemBuilder: (context, index) {
-              final track = _tracks[index];
+              final track = _filteredTracks[index];
               final isCurrent = _currentTrack?.id == track.id;
               final isCurrentlyPlaying = isCurrent && _isPlaying;
               final isFav = _favorites
@@ -498,16 +603,20 @@ class _PlayerPageState extends State<PlayerPage> {
                             fontSize: 12,
                             fontWeight: FontWeight.w700)),
                   ),
-                  title: Text(track.name,
-                      style: TextStyle(
-                          fontWeight: isCurrent
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          fontSize: 14,
-                          color: _textMain)),
-                  subtitle: Text(track.translation,
-                      style: const TextStyle(
-                          fontSize: 11, color: _textSub)),
+                  title: Text(
+                    getSurahName(track.number, locale),
+                    style: TextStyle(
+                        fontWeight: isCurrent
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        fontSize: 14,
+                        color: _textMain),
+                  ),
+                  subtitle: Text(
+                    getSurahTranslation(track.number, locale),
+                    style: const TextStyle(
+                        fontSize: 11, color: _textSub),
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [

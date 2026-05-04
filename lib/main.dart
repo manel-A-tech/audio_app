@@ -1,14 +1,25 @@
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
+
 import 'login_page.dart';
 import 'home_page.dart';
 import 'biometric_service.dart';
+import 'app_localizations.dart';
+import 'language_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => LanguageProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -16,14 +27,24 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final languageProvider = context.watch<LanguageProvider>();
+
     return MaterialApp(
-      title: 'Audio App',
+      title: 'Tarteel',
       debugShowCheckedModeBanner: false,
+      locale: languageProvider.locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
-      home: const BiometricAuthWrapper(),
+      home: BiometricAuthWrapper(key: ValueKey(languageProvider.locale.languageCode)),
     );
   }
 }
@@ -40,29 +61,28 @@ class _BiometricAuthWrapperState extends State<BiometricAuthWrapper> {
   bool _isLoading = true;
   final BiometricService _biometricService = BiometricService();
 
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkBiometric();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkBiometric());
   }
 
   Future<void> _checkBiometric() async {
-    final isAuthenticated = await _biometricService.authenticateWithFingerprint(context);
-    setState(() {
-      _isAuthenticated = isAuthenticated;
-      _isLoading = false;
-    });
+    final ok = await _biometricService.authenticateWithFingerprint(context);
+    if (mounted) {
+      setState(() {
+        _isAuthenticated = ok;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (!_isAuthenticated) {
@@ -73,11 +93,11 @@ class _BiometricAuthWrapperState extends State<BiometricAuthWrapper> {
             children: [
               const Icon(Icons.fingerprint, size: 80),
               const SizedBox(height: 20),
-              const Text('Authentication required'),
+              Text(l.authRequired),
               const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _checkBiometric,
-                child: const Text('Try Again'),
+                child: Text(l.tryAgain),
               ),
             ],
           ),
@@ -89,9 +109,7 @@ class _BiometricAuthWrapperState extends State<BiometricAuthWrapper> {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         return snapshot.data == null ? const LoginPage() : const HomePage();
       },

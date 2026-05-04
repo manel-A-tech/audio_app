@@ -1,15 +1,16 @@
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:just_audio/just_audio.dart';
 import 'biometric_service.dart';
 import 'package:audio_app/ models/track.dart';
+import 'app_localizations.dart';
 
 const _accent     = Color(0xFF7C6FA0);
 const _accentMild = Color(0xFFEDE9F5);
 const _textMain   = Color(0xFF1A1A2E);
 const _textSub    = Color(0xFF8A8A9A);
-const _divider    = Color(0xFFEEECE8);
 const _cardBg     = Colors.white;
 const kRadius     = 16.0;
 
@@ -35,16 +36,16 @@ class _FavouritesPageState extends State<FavouritesPage>
   bool get wantKeepAlive => false;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    AppLocalizations.of(context);
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadFavourites();
     _setupPlayerListeners();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadFavourites();
   }
 
   void _setupPlayerListeners() {
@@ -65,6 +66,7 @@ class _FavouritesPageState extends State<FavouritesPage>
         reciter: d['reciter'] ?? 'Unknown',
         audioUrl: d['audioUrl'] ?? '',
         number: d['number'] ?? 0,
+        translation: '',
       );
     }).toList();
     favs.sort((a, b) => a.number.compareTo(b.number));
@@ -72,10 +74,11 @@ class _FavouritesPageState extends State<FavouritesPage>
   }
 
   Future<void> _removeFavourite(Track track) async {
+    final l = AppLocalizations.of(context);
     final ok = await _biometricService.authenticateWithFingerprint(context);
     if (!ok) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Fingerprint required to remove favourites')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l.fingerprintRequired)));
       return;
     }
     final userId = _auth.currentUser?.uid;
@@ -85,19 +88,22 @@ class _FavouritesPageState extends State<FavouritesPage>
     if (mounted) {
       setState(() => _favourites.removeWhere((t) => t.id == track.id));
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Removed from favourites')));
+          SnackBar(content: Text(l.removedFromFavourites)));
     }
   }
 
   void _playTrack(Track track) async {
+    final l = AppLocalizations.of(context);
     setState(() => _currentTrack = track);
     try {
       await _player.stop();
       await _player.setUrl(track.audioUrl);
       await _player.play();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error playing ${track.name}')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${l.errorPlaying}: ${track.name}')));
+      }
     }
   }
 
@@ -111,6 +117,7 @@ class _FavouritesPageState extends State<FavouritesPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final l = AppLocalizations.of(context);
 
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: _accent));
@@ -121,7 +128,6 @@ class _FavouritesPageState extends State<FavouritesPage>
       onRefresh: _loadFavourites,
       child: Column(
         children: [
-          // Now playing bar
           if (_currentTrack != null)
             Container(
               margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -185,14 +191,14 @@ class _FavouritesPageState extends State<FavouritesPage>
                     Icon(Icons.favorite_border_rounded,
                         size: 72, color: _textSub.withOpacity(0.4)),
                     const SizedBox(height: 18),
-                    const Text('No favourites yet',
-                        style: TextStyle(
+                    Text(l.noFavouritesYet,
+                        style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
                             color: _textMain)),
                     const SizedBox(height: 8),
                     Text(
-                      'Tap the heart icon on any surah\nto add it here',
+                      l.noFavouritesHint,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: 13,
@@ -256,7 +262,7 @@ class _FavouritesPageState extends State<FavouritesPage>
                           icon: const Icon(Icons.favorite_rounded,
                               color: Colors.pinkAccent, size: 20),
                           onPressed: () => _removeFavourite(track),
-                          tooltip: 'Remove',
+                          tooltip: l.remove,
                         ),
                         IconButton(
                           icon: Icon(

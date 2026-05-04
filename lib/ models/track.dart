@@ -1,39 +1,30 @@
+
+
 class Track {
   final String id;
   final String name;
   final String reciter;
   final String audioUrl;
-  final String translation;
   final int number;
+  final String translation;
 
   Track({
     required this.id,
     required this.name,
     required this.reciter,
     required this.audioUrl,
-    this.translation = '',
     required this.number,
+    required this.translation,
   });
 
-  factory Track.fromSurahJson(Map<String, dynamic> json, String reciterName) {
+  factory Track.fromJson(Map<String, dynamic> json) {
     return Track(
-      id: json['id'].toString(),
-      name: json['name'] ?? 'Unknown',
-      reciter: reciterName,
+      id: json['id']?.toString() ?? '',
+      name: json['name'] ?? '',
+      reciter: json['reciter'] ?? '',
       audioUrl: json['audio_url'] ?? '',
+      number: json['number'] ?? 0,
       translation: json['translation'] ?? '',
-      number: json['id'] ?? 0,
-    );
-  }
-
-  factory Track.fromReciterJson(Map<String, dynamic> json) {
-    return Track(
-      id: json['surah_id'].toString(),
-      name: json['surah_name'] ?? 'Unknown',
-      reciter: json['reciter_name'] ?? 'Unknown',
-      audioUrl: json['file_url'] ?? '',
-      translation: '',
-      number: json['surah_id'] ?? 0,
     );
   }
 }

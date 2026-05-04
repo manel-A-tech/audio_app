@@ -10,6 +10,7 @@ import 'auth_service.dart';
 import 'player_page.dart';
 import 'favourites_page.dart';
 import 'profile_page.dart';
+import 'app_localizations.dart';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const _bg         = Color(0xFFFAF9F7);
@@ -44,6 +45,12 @@ class _HomePageState extends State<HomePage> {
   bool _isLoading = true;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    AppLocalizations.of(context);
+  }
+
+  @override
   void initState() {
     super.initState();
     _loadGoal();
@@ -70,7 +77,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // IMPROVED: Better stats loading with proper date filtering
   Future<void> _loadStats() async {
     if (mounted) setState(() => _isLoading = true);
     final user = _auth.currentUser;
@@ -82,13 +88,10 @@ class _HomePageState extends State<HomePage> {
     final now = DateTime.now();
     final currentMonth = DateFormat('yyyy-MM').format(now);
 
-    // Get first and last day of current month
     final firstDay = '$currentMonth-01';
     final lastDay = DateFormat('yyyy-MM-dd').format(
         DateTime(now.year, now.month + 1, 0)
     );
-
-    print('Loading stats from $firstDay to $lastDay'); // Debug
 
     try {
       final statsSnapshot = await _firestore
@@ -98,8 +101,6 @@ class _HomePageState extends State<HomePage> {
           .where('date', isGreaterThanOrEqualTo: firstDay)
           .where('date', isLessThanOrEqualTo: lastDay)
           .get();
-
-      print('Found ${statsSnapshot.docs.length} stat documents'); // Debug
 
       double totalMinutes = 0;
       final Map<int, double> dailyMap = {};
@@ -111,11 +112,7 @@ class _HomePageState extends State<HomePage> {
         final day = int.parse(date.split('-')[2]);
         dailyMap[day] = (dailyMap[day] ?? 0) + minutes;
         totalMinutes += minutes;
-        print('Date: $date, Minutes: $minutes'); // Debug
       }
-
-      print('Total minutes: $totalMinutes'); // Debug
-      print('Daily map: $dailyMap'); // Debug
 
       final tracksSnapshot = await _firestore
           .collection('users')
@@ -138,24 +135,21 @@ class _HomePageState extends State<HomePage> {
         });
       }
     } catch (e) {
-      print('Error loading stats: $e');
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading stats: $e')),
-        );
       }
     }
   }
 
   void _updateGoal() {
+    final l = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(kRadius)),
-        title: const Text('Set Monthly Goal',
-            style: TextStyle(fontWeight: FontWeight.w800, color: _textMain)),
+        title: Text(l.monthlyGoal,
+            style: const TextStyle(fontWeight: FontWeight.w800, color: _textMain)),
         content: DropdownButton<double>(
           value: _monthlyGoal,
           isExpanded: true,
@@ -203,6 +197,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildDashboard() {
+    final l = AppLocalizations.of(context);
     final totalHours = (_totalMinutesListened / 60).floor();
     final totalMins  = (_totalMinutesListened % 60).floor();
     final now = DateTime.now();
@@ -226,14 +221,13 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Welcome with refresh button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Welcome',
+                    Text(l.welcome,
                         style: TextStyle(fontSize: 13, color: _textSub,
                             fontWeight: FontWeight.w500)),
                     const SizedBox(height: 2),
@@ -251,17 +245,16 @@ class _HomePageState extends State<HomePage> {
                     await _loadStats();
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Stats refreshed')),
+                        SnackBar(content: Text(l.statsRefreshed)),
                       );
                     }
                   },
-                  tooltip: 'Refresh stats',
+                  tooltip: l.refreshStats,
                 ),
               ],
             ),
             const SizedBox(height: 24),
 
-            // Listening time card
             _card(
               child: Row(
                 children: [
@@ -278,7 +271,7 @@ class _HomePageState extends State<HomePage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Total Listening Time',
+                      Text(l.totalListeningTime,
                           style: TextStyle(
                               fontSize: 11,
                               color: _textSub,
@@ -297,7 +290,6 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 12),
 
-            // Monthly goal card
             _card(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -306,7 +298,7 @@ class _HomePageState extends State<HomePage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Monthly Goal  ·  ${_monthlyGoal.toStringAsFixed(0)}h',
+                        '${l.monthlyGoal}  ·  ${_monthlyGoal.toStringAsFixed(0)}h',
                         style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -321,8 +313,8 @@ class _HomePageState extends State<HomePage> {
                             color: _accentMild,
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Text('Change',
-                              style: TextStyle(
+                          child: Text(l.change,
+                              style: const TextStyle(
                                   fontSize: 12,
                                   color: _accent,
                                   fontWeight: FontWeight.w600)),
@@ -343,7 +335,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '${(_progressPercentage * 100).toStringAsFixed(0)}% of goal reached',
+                    '${(_progressPercentage * 100).toStringAsFixed(0)}${l.ofGoalReached}',
                     style: const TextStyle(
                         fontSize: 11,
                         color: _textSub,
@@ -354,9 +346,8 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 28),
 
-            // Chart
-            const Text('Minutes per day',
-                style: TextStyle(
+            Text(l.minutesPerDay,
+                style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: _textMain)),
@@ -371,7 +362,7 @@ class _HomePageState extends State<HomePage> {
                 child: _dailyMinutes.isEmpty
                     ? Center(
                   child: Text(
-                    'Play some audio to see your\nlistening stats here.',
+                    l.noStatsHint,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 13, color: _textSub),
@@ -438,9 +429,8 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 28),
 
-            // Top tracks
-            const Text('Most Listened',
-                style: TextStyle(
+            Text(l.mostListened,
+                style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: _textMain)),
@@ -448,10 +438,10 @@ class _HomePageState extends State<HomePage> {
             _card(
               padding: EdgeInsets.zero,
               child: _topTracks.isEmpty
-                  ? const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('No tracks played yet.',
-                    style: TextStyle(fontSize: 13, color: _textSub)),
+                  ? Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(l.noTracksPlayed,
+                    style: const TextStyle(fontSize: 13, color: _textSub)),
               )
                   : ListView.separated(
                 shrinkWrap: true,
@@ -478,7 +468,7 @@ class _HomePageState extends State<HomePage> {
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                             color: _textMain)),
-                    trailing: Text('${track['count']} plays',
+                    trailing: Text('${track['count']} ${l.plays}',
                         style: const TextStyle(
                             fontSize: 11,
                             color: _textSub,
@@ -505,7 +495,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    const titles = ['Dashboard', 'Player', 'Favourites', 'Profile'];
+    final l = AppLocalizations.of(context);
+    final titles = [l.home, l.surahs, l.favourites, l.profile];
+
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -532,23 +524,18 @@ class _HomePageState extends State<HomePage> {
           backgroundColor: _bg,
           selectedItemColor: _accent,
           unselectedItemColor: _textSub,
-          selectedLabelStyle:
-          const TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
           unselectedLabelStyle: const TextStyle(fontSize: 11),
           elevation: 0,
           onTap: (index) {
             setState(() => _currentTab = index);
             if (index == 0) _loadStats();
           },
-          items: const [
-            BottomNavigationBarItem(
-                icon: Icon(Icons.home_rounded), label: 'Dashboard'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.music_note_rounded), label: 'Player'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.favorite_rounded), label: 'Favourites'),
-            BottomNavigationBarItem(
-                icon: Icon(Icons.person_rounded), label: 'Profile'),
+          items: [
+            const BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
+            const BottomNavigationBarItem(icon: Icon(Icons.music_note_rounded), label: 'Surahs'),
+            const BottomNavigationBarItem(icon: Icon(Icons.favorite_rounded), label: 'Favourites'),
+            const BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: 'Profile'),
           ],
         ),
       ),
