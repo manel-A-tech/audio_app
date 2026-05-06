@@ -130,6 +130,13 @@ class ApiService {
     {'id': '2', 'name': 'Abdul Rahman Al-Sudais'},
     {'id': '3', 'name': 'Saad Al-Ghamdi'},
   ];
+/*
+  static const Map<String, String> _serverPaths = {
+    // FULL + VERIFIED folders
+    '1': 'https://server8.mp3quran.net/afs/001',  // Mishary FULL
+    '2': 'https://server11.mp3quran.net/sds/001', // Sudais FULL
+    '3': 'https://server7.mp3quran.net/s_gmd/001', // Ghamdi FULL
+  };*/
 
   Future<List<Map<String, dynamic>>> getSurahs() async => _allSurahs;
 
@@ -141,6 +148,7 @@ class ApiService {
     final server = _serverPaths[reciterId] ?? _serverPaths['1']!;
     final padded = surahNumber.toString().padLeft(3, '0');
     return '$server/$padded.mp3';
+    //return '$server/001$padded.mp3';
   }
 
   Future<List<Track>> getTracksByReciter(
